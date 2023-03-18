@@ -18,3 +18,6 @@ with app.app_context():
         db.session.bulk_insert_mappings(Follows, DictReader(follows))
 
     db.session.commit()
+
+
+
