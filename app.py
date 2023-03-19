@@ -197,7 +197,30 @@ def delete_user():
 ##############################################################################
 # Messages routes:
 
-@app.route('/messages/new', methods=["GET", "POST"])
+
+
+
+
+
+@app.route('/messages/new', methods=["GET"])
+def messages_add_form():
+    """Add a message:
+
+    Show form if GET. If valid, update message and redirect to user page.
+    """
+
+    if not g.user:
+        flash("Access unauthorized.", "danger")
+        return redirect("/")
+
+    form = MessageForm()
+    return render_template('messages/new.html', form=form)
+
+
+
+
+
+@app.route('/messages/new', methods=["POST"])
 def messages_add():
     """Add a message:
 
@@ -209,15 +232,20 @@ def messages_add():
         return redirect("/")
 
     form = MessageForm()
+    msg = Message(text=form.text.data)
+    g.user.messages.append(msg)
+    db.session.commit()
 
-    if form.validate_on_submit():
-        msg = Message(text=form.text.data)
-        g.user.messages.append(msg)
-        db.session.commit()
+    return redirect(f"/users/{g.user.id}")
 
-        return redirect(f"/users/{g.user.id}")
+    
 
-    return render_template('messages/new.html', form=form)
+
+
+
+
+
+
 
 
 @app.route('/messages/<int:message_id>', methods=["GET"])
@@ -423,14 +451,20 @@ def update_profile_Form():
 def update_profile():
     """Update profile for current user."""
     user = User.query.get_or_404(session[CURR_USER_KEY])
+    old_user_name = user.username
     form = ProfileEditForm(obj=user)
-    user.username = form.username.data
-    user.email = form.email.data
-    user.image_url = form.image_url.data
-    user.header_image_url = form.header_image_url.data
-    user.location = form.location.data
-    user.bio = form.bio.data
-    db.session.commit()
-    
-    return redirect(f"/users/{user.id}")
-
+    confirmed_user = User.authenticate(old_user_name, form.password.data)
+    if confirmed_user:
+        
+        confirmed_user.username = form.username.data
+        confirmed_user.email = form.email.data
+        confirmed_user.image_url = form.image_url.data
+        confirmed_user.header_image_url = form.header_image_url.data
+        confirmed_user.location = form.location.data
+        confirmed_user.bio = form.bio.data
+        db.session.commit()
+        
+        return redirect(f"/users/{confirmed_user.id}")
+    else:
+        flash("Wrong password !!", 'danger')
+        return redirect("/")
