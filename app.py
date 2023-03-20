@@ -5,7 +5,7 @@ from flask_debugtoolbar import DebugToolbarExtension
 from sqlalchemy.exc import IntegrityError
 
 from forms import UserAddForm, LoginForm, MessageForm, ProfileEditForm
-from models import db, connect_db, User, Message
+from models import db, connect_db, User, Message, Likes
 
 CURR_USER_KEY = "curr_user"
 
@@ -282,15 +282,25 @@ def homepage():
     - anon users: no messages
     - logged in: 100 most recent messages of followed_users
     """
-
+    list_of_following_ids = []
+    for user in g.user.following:
+        list_of_following_ids.append(user.id)
+    print(list_of_following_ids)
     if g.user:
         messages = (Message
                     .query
+                    .filter(Message.user_id.in_(list_of_following_ids))
                     .order_by(Message.timestamp.desc())
                     .limit(100)
                     .all())
+        # Likes.query.filter(Likes.message_id == message_id).first()
 
-        return render_template('home.html', messages=messages)
+        likes = Likes.query.filter(Likes.user_id == g.user.id).all()
+        list_of_liked_message_ids = []
+        for like in likes:
+            list_of_liked_message_ids.append(like.message_id)
+        num_likes = len(list_of_liked_message_ids)
+        return render_template('home.html', messages=messages, likes_ids=list_of_liked_message_ids, num_likes=num_likes)
 
     else:
         return render_template('home-anon.html')
@@ -468,3 +478,25 @@ def update_profile():
     else:
         flash("Wrong password !!", 'danger')
         return redirect("/")
+    
+
+
+
+@app.route('/users/add_like/<int:message_id>', methods=["POST"])
+def add_like(message_id):
+    likes = Likes.query.all()
+    list_of_liked_message_ids = []
+    for like in likes:
+        list_of_liked_message_ids.append(like.message_id)
+    if message_id in list_of_liked_message_ids:
+        unlike = Likes.query.filter(Likes.message_id == message_id).first()
+        db.session.delete(unlike)
+        db.session.commit()
+    else:
+        user = User.query.get_or_404(session[CURR_USER_KEY])
+        new_like = Likes(user_id=user.id, message_id=message_id)
+        db.session.add(new_like)
+        db.session.commit()
+
+    return redirect("/")
+
