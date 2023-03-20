@@ -118,7 +118,14 @@ def users_show(user_id):
                 .order_by(Message.timestamp.desc())
                 .limit(100)
                 .all())
-    return render_template('users/show.html', user=user, messages=messages)
+    
+    likes = Likes.query.filter(Likes.user_id == g.user.id).all()
+    list_of_liked_message_ids = []
+    for like in likes:
+        list_of_liked_message_ids.append(like.message_id)
+    num_likes = len(list_of_liked_message_ids)
+
+    return render_template('users/show.html', user=user, messages=messages, num_likes=num_likes)
 
 
 @app.route('/users/<int:user_id>/following')
@@ -143,6 +150,31 @@ def users_followers(user_id):
 
     user = User.query.get_or_404(user_id)
     return render_template('users/followers.html', user=user)
+
+
+
+@app.route('/users/<int:user_id>/likes')
+def user_likes(user_id):
+    """Show list of liked messages."""
+
+    if not g.user:
+        flash("Access unauthorized.", "danger")
+        return redirect("/")
+
+    user = User.query.get_or_404(user_id)
+    likes = Likes.query.filter(Likes.user_id == g.user.id).all()
+    list_of_liked_message_ids = []
+    for like in likes:
+        list_of_liked_message_ids.append(like.message_id)
+   
+    liked_messages = (Message
+                    .query
+                    .filter(Message.id.in_(list_of_liked_message_ids))
+                    .order_by(Message.timestamp.desc())
+                    .all())
+    return render_template('users/likes.html', user=user, liked_messages=liked_messages)
+
+
 
 
 @app.route('/users/follow/<int:follow_id>', methods=['POST'])
@@ -185,11 +217,20 @@ def delete_user():
     if not g.user:
         flash("Access unauthorized.", "danger")
         return redirect("/")
+    curr_user = g.user
+    messages_to_delete = (Message
+                .query
+                .filter(Message.user_id == curr_user.id)
+                .all())
+    for message in messages_to_delete:
+        db.session.delete(message)
+
+    db.session.commit()
+
+    db.session.delete(curr_user)
+    db.session.commit()
 
     do_logout()
-
-    db.session.delete(g.user)
-    db.session.commit()
 
     return redirect("/signup")
 
@@ -282,18 +323,20 @@ def homepage():
     - anon users: no messages
     - logged in: 100 most recent messages of followed_users
     """
+   
     list_of_following_ids = []
-    for user in g.user.following:
-        list_of_following_ids.append(user.id)
-    print(list_of_following_ids)
     if g.user:
+         
+        for user in g.user.following:
+            list_of_following_ids.append(user.id)
+
         messages = (Message
                     .query
                     .filter(Message.user_id.in_(list_of_following_ids))
                     .order_by(Message.timestamp.desc())
                     .limit(100)
                     .all())
-        # Likes.query.filter(Likes.message_id == message_id).first()
+       
 
         likes = Likes.query.filter(Likes.user_id == g.user.id).all()
         list_of_liked_message_ids = []
@@ -492,11 +535,13 @@ def add_like(message_id):
         unlike = Likes.query.filter(Likes.message_id == message_id).first()
         db.session.delete(unlike)
         db.session.commit()
+        return redirect(f"/users/{g.user.id}/likes")
     else:
         user = User.query.get_or_404(session[CURR_USER_KEY])
         new_like = Likes(user_id=user.id, message_id=message_id)
         db.session.add(new_like)
         db.session.commit()
+        return redirect("/")
 
-    return redirect("/")
+    
 
